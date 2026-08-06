@@ -1,0 +1,49 @@
+---
+# Upgrade Kubernetes packages on Rocky Linux (one version at a time) - worker nodes
+- hosts: workers
+  become: true
+
+  tasks:
+    - name: Drain the node before upgrading
+      ansible.builtin.command:
+        cmd: "kubectl drain {{ inventory_hostname }} --ignore-daemonsets --delete-emptydir-data"
+      delegate_to: "{{ groups['master'][0] }}"
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+
+    - name: Upgrade kubeadm
+      ansible.builtin.dnf:
+        name: "kubeadm-{{ target_k8s_package_version }}"
+        state: present
+        disable_excludes: kubernetes
+
+    - name: Verify kubeadm version
+      ansible.builtin.command:
+        cmd: kubeadm version -o short
+      register: kubeadm_ver
+      changed_when: false
+
+    - name: Fetch upgraded node configuration
+      ansible.builtin.command:
+        cmd: kubeadm upgrade node
+
+    - name: Upgrade kubelet and kubectl
+      ansible.builtin.dnf:
+        name:
+          - "kubelet-{{ target_k8s_package_version }}"
+          - "kubectl-{{ target_k8s_package_version }}"
+        state: present
+        disable_excludes: kubernetes
+
+    - name: Restart kubelet after upgrade
+      ansible.builtin.systemd:
+        name: kubelet
+        daemon_reload: true
+        state: restarted
+
+    - name: Uncordon the node after upgrade
+      ansible.builtin.command:
+        cmd: "kubectl uncordon {{ inventory_hostname }}"
+      delegate_to: "{{ groups['master'][0] }}"
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf

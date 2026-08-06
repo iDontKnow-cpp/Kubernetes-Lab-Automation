@@ -1,0 +1,50 @@
+---
+# playbook: install-k8s-rhel.yml
+# Install Kubernetes packages on RHEL/CentOS
+- hosts: workers
+  become: true
+
+  vars:
+    k8s_version: "1.36"
+
+  tasks:
+    - name: Ensure libselinux-python bindings are installed
+      ansible.builtin.dnf:
+        name: python3-libselinux
+        state: present
+      become: true
+
+    - name: Set SELinux to permissive mode
+      ansible.posix.selinux:
+        policy: targeted
+        state: permissive
+
+    - name: Import Kubernetes GPG key
+      ansible.builtin.rpm_key:
+        key: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/repodata/repomd.xml.key"
+        state: present
+
+    - name: Add Kubernetes YUM repository
+      ansible.builtin.yum_repository:
+        name: kubernetes
+        description: Kubernetes Repository
+        baseurl: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/"
+        gpgcheck: true
+        gpgkey: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/repodata/repomd.xml.key"
+        enabled: true
+        exclude: "kubelet kubeadm kubectl cri-tools kubernetes-cni"
+
+    - name: Install Kubernetes packages
+      ansible.builtin.dnf:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: latest
+        disable_excludes: kubernetes
+
+    - name: Enable and start kubelet
+      ansible.builtin.systemd:
+        name: kubelet
+        state: started
+        enabled: true

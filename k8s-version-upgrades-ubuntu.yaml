@@ -1,0 +1,55 @@
+# Upgrade Kubernetes packages on Ubuntu (one version at a time)
+- hosts: master
+  become: true
+
+  tasks: 
+  - name: Unhold kubeadm for upgrade
+    ansible.builtin.dpkg_selections:
+      name: kubeadm
+      selection: install
+
+  - name: Upgrade kubeadm
+    ansible.builtin.apt:
+      name: "kubeadm={{ target_k8s_package_version }}"
+      state: present
+      update_cache: true
+
+  - name: Verify kubeadm version
+    ansible.builtin.command:
+      cmd: kubeadm version -o short
+    register: kubeadm_ver
+    changed_when: false
+
+  - name: Upgrade the control plane
+    ansible.builtin.command:
+      cmd: "kubeadm upgrade apply v{{ target_k8s_version }} -y"
+
+  - name: Unhold kubelet and kubectl for upgrade
+    ansible.builtin.dpkg_selections:
+      name: "{{ item }}"
+      selection: install
+    loop:
+      - kubelet
+      - kubectl
+
+  - name: Upgrade kubelet and kubectl
+    ansible.builtin.apt:
+      name:
+        - "kubelet={{ target_k8s_package_version }}"
+        - "kubectl={{ target_k8s_package_version }}"
+      state: present
+
+  - name: Hold Kubernetes packages again
+    ansible.builtin.dpkg_selections:
+      name: "{{ item }}"
+      selection: hold
+    loop:
+      - kubeadm
+      - kubelet
+      - kubectl
+
+  - name: Restart kubelet after upgrade
+    ansible.builtin.systemd:
+      name: kubelet
+      state: restarted
+      daemon_reload: true

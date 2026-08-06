@@ -1,0 +1,10 @@
+[master]
+localhost ansible_connection=local
+
+[workers]
+node-1 ansible_host=192.168.122.141
+node-2 ansible_host=192.168.122.37
+
+[k8s_cluster:children]
+master
+workers

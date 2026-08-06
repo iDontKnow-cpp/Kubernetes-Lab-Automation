@@ -1,0 +1,49 @@
+---
+# playbook: init-control-plane.yml
+# Initialize the Kubernetes control plane on the first master node
+- hosts: master
+  become: true
+
+  vars:
+    pod_network_cidr: "10.244.0.0/16"
+    service_cidr: "10.96.0.0/12"
+    k8s_version: "v1.36.1"
+
+  tasks:
+    - name: Check if cluster is already initialized
+      ansible.builtin.stat:
+        path: /etc/kubernetes/admin.conf
+      register: k8s_admin_conf
+
+    - name: Initialize Kubernetes control plane
+      ansible.builtin.command:
+        cmd: >
+          kubeadm init
+          --pod-network-cidr={{ pod_network_cidr }}
+          --service-cidr={{ service_cidr }}
+          --kubernetes-version={{ k8s_version }}
+      register: kubeadm_init
+      when: not k8s_admin_conf.stat.exists
+
+    - name: Create .kube directory for root
+      ansible.builtin.file:
+        path: /root/.kube
+        state: directory
+        mode: '0700'
+
+    - name: Copy admin.conf to root user
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: true
+        mode: '0600'
+
+    - name: Generate join command
+      ansible.builtin.command:
+        cmd: kubeadm token create --print-join-command
+      register: join_command
+      changed_when: false
+
+    - name: Store join command as fact
+      ansible.builtin.set_fact:
+        k8s_join_command: "{{ join_command.stdout }}"
